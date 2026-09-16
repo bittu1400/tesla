@@ -1,0 +1,14 @@
+# personal task list
+todo.md
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# large, reproducible outputs: collected frames, models, runs, recordings
+data/
+models/
+demo/
+unitylog.txt
