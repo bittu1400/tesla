@@ -1,0 +1,5 @@
+{
+  "throttle": 0.3,
+  "car_dir": "~/mycar",
+  "image_every": 5
+}

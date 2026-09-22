@@ -1,14 +1,18 @@
 # personal task list
 todo.md
 
+# reference material
+Donkey Car Simulation Research Topics.pdf
+
 # python
 __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
 
-# large, reproducible outputs: collected frames, models, runs, recordings
+# large, reproducible outputs: driving data, models, results, recordings
 data/
 models/
+results/
 demo/
 unitylog.txt
