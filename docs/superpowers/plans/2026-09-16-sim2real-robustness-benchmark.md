@@ -10,6 +10,25 @@
 
 **Spec:** [docs/superpowers/specs/2026-09-16-sim2real-robustness-benchmark-design.md](../specs/2026-09-16-sim2real-robustness-benchmark-design.md)
 
+## Status (2026-09-22)
+
+Branch `sim2real-benchmark`, forked from `master`. Tasks 1–15 are implemented and committed: 15 commits, `ae25e4a` (Task 1) through `fabd652` (Task 15). All 115 tests pass. Each task got a spec and quality review:
+- 14 tasks came back clean.
+- The Task 14 review flagged one plan-mandated Important finding. It was resolved by a ruling (below), not by a code change.
+
+Ticked steps are done. Unticked steps are not.
+
+**Next session:**
+1. Task 16 (`bench/report.py`) has not started. After it, the full suite should total **121**. The original "122" miscounted Task 14, which has 6 tests.
+   - `README.md` already lists `python -m bench.report`, but that command fails until Task 16 lands.
+2. Run a final whole-branch review over `fbbd919..HEAD`, then merge `sim2real-benchmark` into `master`.
+3. The manual steps need the Unity sim and a person: Task 6 Steps 2–4, Task 9 Step 7, and all of Task 17. The sim is not installed yet: `DONKEY_SIM_PATH` is unset, and the README download URL answers HTTP 200.
+
+The execution ledger lives at `.superpowers/sdd/2026-09-16-sim2real-robustness-benchmark/progress.md`. It is gitignored and exists on this machine only. It holds every ruling and every deferred minor finding; hand all of them to the final review. Rulings to know:
+- **Sim `offset_start`:** at handover the policy's `prev_steer` input is `±0.6`, the command actually executed during the forced drift. The Task 14 reviewer asked for it to be zeroed, to match the real car, which starts at 0. It was kept, because everywhere else `prev_steer` means "previous executed command", so a zero would feed a false state. To revisit, change one line in `bench/sim_bench.py::run_episode`.
+- **Simulator steps:** anything that needs the real simulator was skipped, and the code for those tasks was committed. Unit tests were written where the plan calls for them; `scripts/check_sim.py` has none.
+- **`.gitignore`:** also ignores `Donkey Car Simulation Research Topics.pdf`.
+
 ## Global Constraints
 
 - Python 3.12 venv created with `uv` at `.venv/`; never install into system Python 3.14.
@@ -97,7 +116,7 @@ Tesla/
 **Interfaces:**
 - Produces: importable empty packages `car`, `envs`, `collect`, `learn`, `bench`, `scripts`; pytest resolves imports from the repo root; `car/settings.json` with keys `throttle` (float), `car_dir` (str), `image_every` (int).
 
-- [ ] **Step 1: Stage the CARLA leftover deletion**
+- [x] **Step 1: Stage the CARLA leftover deletion**
 
 ```bash
 git rm test_carla.py
@@ -105,7 +124,7 @@ git rm test_carla.py
 
 Expected: `git status` shows `deleted: test_carla.py` under "Changes to be committed".
 
-- [ ] **Step 2: Replace `.gitignore`**
+- [x] **Step 2: Replace `.gitignore`**
 
 ```
 # personal task list
@@ -125,7 +144,7 @@ demo/
 unitylog.txt
 ```
 
-- [ ] **Step 3: Write `requirements.txt`**
+- [x] **Step 3: Write `requirements.txt`**
 
 ```
 # Laptop only. The Pi needs nothing beyond donkeycar (numpy + Pillow).
@@ -144,7 +163,7 @@ matplotlib>=3.9,<4
 pytest==9.1.1
 ```
 
-- [ ] **Step 4: Write `pytest.ini`**
+- [x] **Step 4: Write `pytest.ini`**
 
 ```ini
 [pytest]
@@ -152,7 +171,7 @@ pythonpath = .
 testpaths = tests
 ```
 
-- [ ] **Step 5: Write `car/settings.json`**
+- [x] **Step 5: Write `car/settings.json`**
 
 `throttle` is recalibrated on the real car later (todo Phase 6); keep this placeholder value until then.
 
@@ -164,7 +183,7 @@ testpaths = tests
 }
 ```
 
-- [ ] **Step 6: Write `README.md`**
+- [x] **Step 6: Write `README.md`**
 
 ````markdown
 # Sim-to-Real Robustness Benchmark: RL vs Behavioral Cloning
@@ -218,14 +237,14 @@ On the Pi: `python -m car.trial <id>` (see `todo.md`).
 If a crashed run left a simulator running: `pkill -f DonkeySim`.
 ````
 
-- [ ] **Step 7: Create packages**
+- [x] **Step 7: Create packages**
 
 ```bash
 mkdir -p car envs collect learn bench scripts tests
 touch car/__init__.py envs/__init__.py collect/__init__.py learn/__init__.py bench/__init__.py scripts/__init__.py
 ```
 
-- [ ] **Step 8: Create the venv and install**
+- [x] **Step 8: Create the venv and install**
 
 ```bash
 uv venv --python 3.12 .venv
@@ -235,7 +254,7 @@ uv pip install -r requirements.txt
 
 Expected: completes without errors (torch is a large download).
 
-- [ ] **Step 9: Verify imports and GPU**
+- [x] **Step 9: Verify imports and GPU**
 
 ```bash
 python -c "import gym_donkeycar, gymnasium, stable_baselines3, cv2, pygame, scipy, matplotlib, torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_arch_list())"
@@ -243,12 +262,12 @@ python -c "import gym_donkeycar, gymnasium, stable_baselines3, cv2, pygame, scip
 
 Expected: `2.14.0 True [...]` with `sm_120` in the list. If CUDA is unavailable or `sm_120` is missing: `uv pip install --reinstall torch==2.14.0 --index-url https://download.pytorch.org/whl/cu128`, then rerun. (CPU still works, just slower.)
 
-- [ ] **Step 10: Verify pytest configuration**
+- [x] **Step 10: Verify pytest configuration**
 
 Run: `pytest`
 Expected: `no tests ran` (exit code 5), no import or config errors.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add .gitignore requirements.txt pytest.ini README.md car envs collect learn bench scripts
@@ -273,7 +292,7 @@ git commit -m "chore: scaffold sim-to-real robustness benchmark"
   - `Head(arrays)` — callable `obs (latent_dim+1,) -> float` in `[-tanh(2), tanh(2)]`; `ValueError` if no `head.*` keys.
   - `Policy(path)` — attributes `encoder`, `head`; `act(frame, prev_steer: float) -> float`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_car_policy.py
@@ -398,12 +417,12 @@ def test_missing_encoder_weights_raise(tmp_path):
         Policy(tmp_path / "head_only.npz")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_car_policy.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'car.policy'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # car/policy.py
@@ -500,12 +519,12 @@ class Policy:
         return self.head(obs)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_car_policy.py -v`
 Expected: PASS (10 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add car/policy.py tests/test_car_policy.py
@@ -532,7 +551,7 @@ git commit -m "feat: add numpy policy inference shared by sim and car"
   - `encoder_arrays(encoder) -> dict`, `head_arrays(head) -> dict` (numpy, keys prefixed `encoder.` / `head.`)
   - `save_npz(path, arrays: dict) -> None` (creates parent dirs)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_nets.py
@@ -610,12 +629,12 @@ def test_exported_npz_matches_torch_forward(tmp_path):
     assert Policy(path).act(frame, prev) == pytest.approx(expected, abs=1e-4)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_nets.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'learn.nets'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # learn/nets.py
@@ -735,12 +754,12 @@ def save_npz(path, arrays: dict) -> None:
     np.savez(path, **arrays)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_nets.py -v`
 Expected: PASS (7 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add learn/nets.py tests/test_nets.py
@@ -765,7 +784,7 @@ git commit -m "feat: add torch encoder, VAE and policy head with npz export"
 
 Why the process code exists: gym-donkeycar's own launcher sleeps a fixed 5 s and loses the process handle on failure, orphaning a sim that keeps the port busy; its `observe()` waits forever when the sim dies.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_reward.py
@@ -888,12 +907,12 @@ def test_kill_sim_accepts_none():
     kill_sim(None)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_reward.py tests/test_sim_process.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `envs/reward.py`**
+- [x] **Step 3: Write `envs/reward.py`**
 
 ```python
 # envs/reward.py
@@ -924,7 +943,7 @@ def compute_reward(cte: float, hit, forward_vel: float, cte_max: float, sim_done
     return 1.0 - min(abs(cte) / cte_max, 1.0), False
 ```
 
-- [ ] **Step 4: Write `envs/sim_process.py`**
+- [x] **Step 4: Write `envs/sim_process.py`**
 
 ```python
 # envs/sim_process.py
@@ -998,12 +1017,12 @@ def kill_sim(proc: subprocess.Popen | None) -> None:
     proc.wait(timeout=10)
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `pytest tests/test_reward.py tests/test_sim_process.py -v`
 Expected: PASS (15 passed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add envs/reward.py envs/sim_process.py tests/test_reward.py tests/test_sim_process.py
@@ -1025,7 +1044,7 @@ git commit -m "feat: add lane reward and simulator process management"
   - `DonkeyLaneEnv(exe_path: str, env_name: str = "donkey-generated-track-v0", port: int = 9091, cte_max: float = 2.0, max_episode_steps: int = 2000, throttle: float = 0.25, steer_limit: float = 1.0, cam_fov: int = 0, step_timeout: float = 10.0, startup_timeout: float = 120.0)`. `exe_path="remote"` skips launching. `action_space = Box(-1, 1, (1,), float32)` (steering). `observation_space = Box(0, 255, CAMERA_SHAPE, uint8)`. Public mutable attribute `throttle` (sim throttle sent every step). `reset(*, seed=None, options=None) -> (frame, info)`, `step(action) -> (frame, reward, terminated, truncated, info)`, `close()` (idempotent). Raises `FileNotFoundError` for a missing binary and `SimDisconnectedError` when the sim can't be started/reached or stops answering. When `cam_fov > 0`, `conf["cam_config"] = {"img_w": 160, "img_h": 120, "fov": cam_fov}`.
   - `add_env_args(parser)` adds `--exe-path` (default `$DONKEY_SIM_PATH`), `--port`, `--env-name`, `--cte-max`, `--max-episode-steps`, `--throttle`, `--cam-fov`; `env_kwargs_from_args(args) -> dict` for `DonkeyLaneEnv`, exiting with a message if no sim path.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 The fake mirrors gym-donkeycar's real API — 5-tuple `step`, `hit` as the string `"none"`.
 
@@ -1224,12 +1243,12 @@ def test_flags_reach_kwargs(monkeypatch):
     assert kwargs["cam_fov"] == 49
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_donkey_env.py tests/test_cli.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `envs/donkey_env.py`**
+- [x] **Step 3: Write `envs/donkey_env.py`**
 
 ```python
 # envs/donkey_env.py
@@ -1352,7 +1371,7 @@ class DonkeyLaneEnv(gym.Env):
             self._underlying = None
 ```
 
-- [ ] **Step 4: Write `envs/cli.py`**
+- [x] **Step 4: Write `envs/cli.py`**
 
 ```python
 # envs/cli.py
@@ -1390,12 +1409,12 @@ def env_kwargs_from_args(args: argparse.Namespace) -> dict:
     }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `pytest tests/test_donkey_env.py tests/test_cli.py -v`
 Expected: PASS (17 passed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add envs/donkey_env.py envs/cli.py tests/test_donkey_env.py tests/test_cli.py
@@ -1415,7 +1434,7 @@ git commit -m "feat: add steering-only DonkeyLaneEnv and shared sim flags"
 
 **Prerequisite (the user does this):** the simulator is unzipped and `DONKEY_SIM_PATH` points at the executable. If not, stop and ask the user.
 
-- [ ] **Step 1: Write `scripts/check_sim.py`**
+- [x] **Step 1: Write `scripts/check_sim.py`**
 
 ```python
 # scripts/check_sim.py
@@ -1498,7 +1517,7 @@ For each of `donkey-generated-track-v0` and `donkey-warehouse-v0`:
 
 Record all three in `todo.md`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_sim.py
@@ -1520,7 +1539,7 @@ git commit -m "feat: add simulator check and calibration script"
 
 Training ranges and evaluation strengths are disjoint on purpose (spec, "Domain randomization").
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_augment.py
@@ -1593,12 +1612,12 @@ def test_distractors_fixed_within_episode_and_change_between():
     assert not np.array_equal(first, d(_frame(), 0))
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_augment.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'envs.augment'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # envs/augment.py
@@ -1732,12 +1751,12 @@ def make_augmenter(name: str | None, rng: np.random.Generator):
     return None if name is None else AUGMENTERS[name](rng)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_augment.py -v`
 Expected: PASS (11 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add envs/augment.py tests/test_augment.py
@@ -1758,7 +1777,7 @@ git commit -m "feat: add domain randomization and held-out image perturbations"
   - `ActuatorLag(env, delay_steps: int = 0)` — each steering action reaches `env` `delay_steps` steps late (zeros first). Public attribute `delay_steps`, applied at the next `reset`.
   - `LatentEnv(env, encoder, augmenter=None)` — `encoder` is callable `(3,80,80) float32 -> (latent_dim,)` with attribute `latent_dim` (e.g. `car.policy.Encoder`). Observation `Box(-inf, inf, (latent_dim+1,), float32)` = `[encoder(preprocess(augmented frame)), previous steering command]`. The previous command is the clipped action given to `LatentEnv.step` (0 after reset). `augmenter(frame, t)` receives the step index `t` (0 at reset); `augmenter.new_episode()` is called on every reset. Public attributes `encoder` and `augmenter` may be swapped between episodes.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_wrappers.py
@@ -1866,12 +1885,12 @@ def test_latent_env_applies_augmenter_with_step_index():
     assert obs[0] == pytest.approx(1.0)  # augmenter made the frame white
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_wrappers.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'envs.wrappers'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # envs/wrappers.py
@@ -1942,12 +1961,12 @@ class LatentEnv(gym.Wrapper):
         return self._observe(frame), reward, terminated, truncated, info
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_wrappers.py -v`
 Expected: PASS (5 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add envs/wrappers.py tests/test_wrappers.py
@@ -1975,7 +1994,7 @@ git commit -m "feat: add actuator lag and latent observation wrappers"
 
 Each saved row is the frame the driver *saw* plus the steering decision for it; `prev_steer` is the steering executed on the previous step.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_drivers.py
@@ -2144,12 +2163,12 @@ def test_run_scripted_aligns_frames_labels_and_previous_steering(tmp_path):
     assert rows[4]["prev_steer"] == 0.0
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_drivers.py tests/test_dataset.py tests/test_collect.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `collect/drivers.py`**
+- [x] **Step 3: Write `collect/drivers.py`**
 
 ```python
 # collect/drivers.py
@@ -2208,7 +2227,7 @@ def keys_to_steer(left: bool, right: bool, current: float, rate: float = 0.15) -
     return float(np.clip(current + np.clip(target - current, -rate, rate), -1.0, 1.0))
 ```
 
-- [ ] **Step 4: Write `collect/dataset.py`**
+- [x] **Step 4: Write `collect/dataset.py`**
 
 ```python
 # collect/dataset.py
@@ -2295,7 +2314,7 @@ def read_labels(data_dir) -> list[dict]:
         ]
 ```
 
-- [ ] **Step 5: Write `collect/collect.py`**
+- [x] **Step 5: Write `collect/collect.py`**
 
 ```python
 # collect/collect.py
@@ -2391,7 +2410,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `pytest tests/test_drivers.py tests/test_dataset.py tests/test_collect.py -v`
 Expected: PASS (12 passed)
@@ -2403,7 +2422,7 @@ Use the calibrated flags from Task 6 (written below as `<flags>` = `--env-name .
 - `python -m collect.collect --mode manual --out-dir data/drive_check --n-frames 200 <flags>` — click the pygame window; left/right arrows steer; Esc stops.
 - `head -5 data/drive_check/labels.csv` shows rows; then `rm -r data/drive_check`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add collect tests/test_drivers.py tests/test_dataset.py tests/test_collect.py
@@ -2429,7 +2448,7 @@ git commit -m "feat: add labeled driving data collection"
   - `save_reconstructions(model, dataset, out_path, n: int = 8)` — PNG rows: input, target, reconstruction.
   - CLI: `python -m learn.train_vae --data-dir data/drive --out-dir models/vae_clean [--dr]` → `vae.pth`, `encoder.npz`, `recon.png`, `history.json` in `--out-dir`. Refuses fewer than 500 frames.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_train_vae.py
@@ -2492,12 +2511,12 @@ def test_save_reconstructions_grid(tmp_path):
     assert cv2.imread(str(out)).shape == (240, 320, 3)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_train_vae.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'learn.train_vae'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # learn/train_vae.py
@@ -2654,12 +2673,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_train_vae.py -v`
 Expected: PASS (5 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add learn/train_vae.py tests/test_train_vae.py
@@ -2683,7 +2702,7 @@ git commit -m "feat: add clean and denoising-DR VAE training"
   - `train(encoder, head, train_loader, val_loader, epochs: int, device: str = "cpu", lr: float = 1e-3) -> dict` (head left holding best-validation weights).
   - CLI: `python -m learn.train_bc --vae models/vae_clean/vae.pth --out models/bc_clean/policy.npz [--dr] [--data-dir data/drive]` → `policy.npz` (encoder + head) and `history.json` next to it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_train_bc.py
@@ -2748,12 +2767,12 @@ def test_train_reduces_loss_and_exports_working_policy(tmp_path):
     assert -1.0 <= steer <= 1.0
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_train_bc.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'learn.train_bc'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # learn/train_bc.py
@@ -2897,12 +2916,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_train_bc.py -v`
 Expected: PASS (4 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add learn/train_bc.py tests/test_train_bc.py
@@ -2926,7 +2945,7 @@ git commit -m "feat: add behavioral cloning head training"
   - `export_sac_policy(model: SAC, encoder: dict, out_path) -> None` — writes encoder arrays + the actor copied into `PolicyHead`; `car.policy.Head` then equals `model.predict(obs, deterministic=True)`.
   - CLI: `python -m learn.train_sac --encoder models/vae_clean/encoder.npz --run-dir models/sac_clean [--dr] [--total-timesteps 80000] [env flags]` → `<run-dir>/checkpoints/`, `tb/`, `settings.json`, `sac_final.zip`, `policy.npz`. Refuses to reuse a run dir whose saved settings differ.
 
-- [ ] **Step 1: Write `learn/sac_config.py`**
+- [x] **Step 1: Write `learn/sac_config.py`**
 
 ```python
 # learn/sac_config.py
@@ -2957,7 +2976,7 @@ SAC_CONFIG = {
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `FakeLatentEnv` subclasses `gymnasium.Env` because SB3 wraps envs in `Monitor`, which requires it.
 
@@ -3070,12 +3089,12 @@ def test_exported_head_matches_sac_predict(tmp_path):
         assert head(obs) == pytest.approx(float(action[0]), abs=1e-5)
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `pytest tests/test_train_sac.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'learn.train_sac'`
 
-- [ ] **Step 4: Write `learn/train_sac.py`**
+- [x] **Step 4: Write `learn/train_sac.py`**
 
 ```python
 # learn/train_sac.py
@@ -3226,13 +3245,13 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `pytest tests/test_train_sac.py -v`
 Expected: PASS (5 passed), under a minute on CPU.
 If `test_exported_head_matches_sac_predict` fails, print `model.actor` to see how this SB3 version builds the mean layer and adjust `export_sac_policy` (and, if SB3 no longer clips the gSDE mean, `CLIP_MEAN` handling in `car/policy.py` and `learn/nets.py`) until it passes. Do not loosen the tolerance.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add learn/sac_config.py learn/train_sac.py tests/test_train_sac.py
@@ -3261,7 +3280,7 @@ git commit -m "feat: add crash-resumable SAC training with policy export"
 
 A completed lap ends with one final takeover at the finish line; every other takeover is an intervention.
 
-- [ ] **Step 1: Write `bench/conditions.py`**
+- [x] **Step 1: Write `bench/conditions.py`**
 
 ```python
 # bench/conditions.py
@@ -3292,7 +3311,7 @@ BY_NAME = {c.name: c for c in CONDITIONS}
 NOISE_CONDITIONS = tuple(c.name for c in CONDITIONS if c.name != "nominal")
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_metrics.py
@@ -3382,12 +3401,12 @@ def test_trial_outcome():
     assert failed["interventions"] == 2 and not failed["clean_lap"]
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `pytest tests/test_metrics.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'bench.metrics'`
 
-- [ ] **Step 4: Write `bench/metrics.py`**
+- [x] **Step 4: Write `bench/metrics.py`**
 
 ```python
 # bench/metrics.py
@@ -3501,12 +3520,12 @@ def trial_outcome(log: dict, completed: bool) -> dict:
     }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `pytest tests/test_metrics.py -v`
 Expected: PASS (8 passed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add bench/conditions.py bench/metrics.py tests/test_metrics.py
@@ -3529,7 +3548,7 @@ git commit -m "feat: add evaluation conditions and shared metrics"
   - `run_bench(env_factory, policies: dict, conditions, n_episodes: int, out_path, base_throttle: float, cte_max: float, laps: int = 1, max_restarts: int = 5, clock=time.monotonic) -> int` — `env_factory() -> (raw, lag, top)` where `raw.throttle`, `lag.delay_steps`, `top.encoder`, `top.augmenter` are set before each episode and episodes run on `top`. `policies[name]` has `.encoder` and `.head`. Appends one JSON line per episode (`model`, `condition`, `episode` + `run_episode` keys) and skips episodes already in the file. Augmenter RNG seeded from `(crc32(condition name), episode)`, so every model sees the same perturbation. Rebuilds the env on `SimDisconnectedError` (at most `max_restarts`). Returns the number of episodes run.
   - CLI: `python -m bench.sim_bench [--models name=path ...] [--conditions ...] [--n-episodes 10] [--laps 1] [--out results/sim/episodes.jsonl] [env flags]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_sim_bench.py
@@ -3684,12 +3703,12 @@ def test_run_bench_rebuilds_env_after_disconnect(tmp_path):
     assert stacks[0].closed
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_sim_bench.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'bench.sim_bench'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # bench/sim_bench.py
@@ -3852,12 +3871,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_sim_bench.py -v`
-Expected: PASS (7 passed)
+Expected: PASS (6 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bench/sim_bench.py tests/test_sim_bench.py
@@ -3881,7 +3900,7 @@ git commit -m "feat: add resumable simulator robustness benchmark"
   - `car/trial.py`: `INSTRUCTIONS: dict[condition, str]`, `find_trial(schedule_path, trial_id) -> dict`, `ask(prompt, parse, input_fn)`, `parse_yes_no(text) -> bool`, `append_result(path, row)`, `main(argv=None, input_fn=input, popen=subprocess.Popen)`. Results columns: `trial_id, condition, model, round, battery_v, lux, completed, notes, log`. Env vars passed to donkeycar: `BENCH_POLICY`, `BENCH_THROTTLE`, `BENCH_LOG`, `BENCH_IMAGES`, `BENCH_IMAGE_EVERY`. Never prints the model name.
   - `bench/schedule.py`: `BLOCK_ORDER`, `make_schedule(models=MODELS, blocks=BLOCK_ORDER, rounds=5, seed=0) -> list[dict]` (keys `trial_id` 3-digit, `condition`, `model`, `round`), `write_schedule(rows, path)`, CLI `python -m bench.schedule [--out car/schedule.csv]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_pilot_part.py
@@ -4061,12 +4080,12 @@ def test_every_condition_has_operator_instructions():
     assert set(INSTRUCTIONS) == set(BY_NAME) == set(BLOCK_ORDER)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_pilot_part.py tests/test_trial.py tests/test_schedule.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `car/pilot_part.py`**
+- [x] **Step 3: Write `car/pilot_part.py`**
 
 ```python
 # car/pilot_part.py
@@ -4128,7 +4147,7 @@ class RobustPilot:
         self._file.close()
 ```
 
-- [ ] **Step 4: Write `car/trial.py`**
+- [x] **Step 4: Write `car/trial.py`**
 
 ```python
 # car/trial.py
@@ -4264,7 +4283,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 5: Write `bench/schedule.py`**
+- [x] **Step 5: Write `bench/schedule.py`**
 
 ```python
 # bench/schedule.py
@@ -4318,17 +4337,17 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `pytest tests/test_pilot_part.py tests/test_trial.py tests/test_schedule.py -v`
 Expected: PASS (10 passed)
 
-- [ ] **Step 7: Generate the schedule**
+- [x] **Step 7: Generate the schedule**
 
 Run: `python -m bench.schedule`
 Expected: `wrote 120 trials to car/schedule.csv`
 
-- [ ] **Step 8: Append the Pi setup section to `README.md`**
+- [x] **Step 8: Append the Pi setup section to `README.md`**
 
 ````markdown
 
@@ -4367,7 +4386,7 @@ The Pi needs only donkeycar (numpy and Pillow come with it); no torch.
 5. Copy results back: `scp -r pi@<car>:~/tesla/data/real data/`.
 ````
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add car/pilot_part.py car/trial.py car/schedule.csv bench/schedule.py README.md tests/test_pilot_part.py tests/test_trial.py tests/test_schedule.py
@@ -4705,7 +4724,7 @@ Expected: PASS (6 passed)
 - [ ] **Step 5: Run the whole suite**
 
 Run: `pytest`
-Expected: all tests pass (122).
+Expected: all tests pass (121).
 
 - [ ] **Step 6: Commit**
 
