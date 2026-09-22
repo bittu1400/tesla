@@ -47,3 +47,37 @@ python -m bench.report                                        # results/report.m
 
 On the Pi: `python -m car.trial <id>` (see `todo.md`).
 If a crashed run left a simulator running: `pkill -f DonkeySim`.
+
+## Raspberry Pi setup
+
+The Pi needs only donkeycar (numpy and Pillow come with it); no torch.
+
+1. Copy the car code and the four models:
+   ```bash
+   ssh pi@<car> 'mkdir -p ~/tesla/models'
+   scp -r car pi@<car>:~/tesla/
+   for m in sac_clean sac_dr bc_clean bc_dr; do scp models/$m/policy.npz pi@<car>:~/tesla/models/$m.npz; done
+   ```
+2. In the car app's `manage.py` (e.g. `~/mycar/manage.py`), add this block
+   inside `drive()` directly **before** the line `V.add(DriveMode(`:
+   ```python
+       # --- sim2real robustness benchmark pilot ---
+       import os
+       if os.environ.get("BENCH_POLICY"):
+           import sys
+           sys.path.insert(0, os.path.expanduser("~/tesla"))
+           from car.pilot_part import RobustPilot
+           V.add(RobustPilot(os.environ["BENCH_POLICY"], float(os.environ["BENCH_THROTTLE"]),
+                             os.environ["BENCH_LOG"], os.environ.get("BENCH_IMAGES"),
+                             int(os.environ.get("BENCH_IMAGE_EVERY", "5"))),
+                 inputs=["cam/image_array", "user/mode", "user/angle"],
+                 outputs=["pilot/angle", "pilot/throttle"])
+   ```
+   Without `BENCH_POLICY` set, `manage.py drive` behaves exactly as before.
+3. Check numpy is at least 1.20 (for `sliding_window_view`), the policy loads, and it is fast enough (well under 50 ms):
+   ```bash
+   python -c "import numpy; print(numpy.__version__)"
+   cd ~/tesla && python -c "import time, numpy as np; from car.policy import Policy; p = Policy('models/sac_clean.npz'); f = np.zeros((120, 160, 3), np.uint8); p.act(f, 0.0); t = time.perf_counter(); [p.act(f, 0.0) for _ in range(50)]; print((time.perf_counter() - t) / 50 * 1000, 'ms')"
+   ```
+4. A trial: `cd ~/tesla && python -m car.trial <id>` (ids from `car/schedule.csv`).
+5. Copy results back: `scp -r pi@<car>:~/tesla/data/real data/`.
