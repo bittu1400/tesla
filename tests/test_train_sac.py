@@ -76,6 +76,12 @@ def test_train_runs_to_total_timesteps(tmp_path):
     assert envs[-1].closed
 
 
+def test_train_passes_seed_to_sac(tmp_path):
+    model = train(lambda: FakeLatentEnv(), total_timesteps=10, run_dir=tmp_path, checkpoint_freq=10,
+                  config=TINY_CONFIG, tensorboard=False, seed=123)
+    assert model.seed == 123
+
+
 def test_train_resumes_from_checkpoint_after_sim_crash(tmp_path):
     envs = []
 

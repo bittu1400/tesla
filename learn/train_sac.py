@@ -54,6 +54,7 @@ def train(
     max_restarts: int = 5,
     config: dict = SAC_CONFIG,
     tensorboard: bool = True,
+    seed: int | None = None,
 ) -> SAC:
     """Train until total_timesteps, rebuilding the env and resuming from the
     latest checkpoint whenever it raises SimDisconnectedError."""
@@ -72,7 +73,8 @@ def train(
                 if buffer_path is not None:
                     model.load_replay_buffer(buffer_path)
             else:
-                model = SAC(env=env, verbose=1, tensorboard_log=str(run_dir / "tb") if tensorboard else None, **config)
+                model = SAC(env=env, verbose=1, seed=seed, tensorboard_log=str(run_dir / "tb") if tensorboard else None,
+                            **config)
             remaining = total_timesteps - model.num_timesteps
             if remaining > 0:
                 callback = CheckpointCallback(
@@ -136,7 +138,7 @@ def main():
         augmenter = DomainRandomizer(rng) if args.dr else None
         return LatentEnv(DonkeyLaneEnv(**env_kwargs), encoder, augmenter)
 
-    model = train(make_env, args.total_timesteps, run_dir, args.checkpoint_freq, args.max_restarts)
+    model = train(make_env, args.total_timesteps, run_dir, args.checkpoint_freq, args.max_restarts, seed=args.seed)
     model.save(run_dir / "sac_final")
     export_sac_policy(model, encoder_weights, run_dir / "policy.npz")
     print(f"saved {run_dir / 'sac_final.zip'} and {run_dir / 'policy.npz'}")
