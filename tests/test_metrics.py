@@ -62,6 +62,7 @@ def test_parse_trial_log(tmp_path):
     assert log["latency_ms_mean"] == pytest.approx(12.0)
     assert log["osc_hz"] == pytest.approx(1.0, abs=0.25)
     assert log["jerk"] > 0
+    assert log["last_mode"] == "user"
 
 
 def test_parse_log_without_pilot_samples(tmp_path):
@@ -72,13 +73,21 @@ def test_parse_log_without_pilot_samples(tmp_path):
 
 
 def test_trial_outcome():
-    log = {"takeover_times": [1005.5, 1009.0], "pilot_start": 1000.5}
+    log = {"takeover_times": [1005.5, 1009.0], "pilot_start": 1000.5, "last_mode": "user"}
     done = trial_outcome(log, completed=True)
     assert done["interventions"] == 1 and not done["clean_lap"]
     assert math.isnan(done["lap_time"])
     assert done["early_intervention"]  # 5.0 s after start
-    clean = trial_outcome({"takeover_times": [1009.0], "pilot_start": 1000.5}, completed=True)
+    clean = trial_outcome({"takeover_times": [1009.0], "pilot_start": 1000.5, "last_mode": "user"}, completed=True)
     assert clean["clean_lap"] and clean["lap_time"] == pytest.approx(8.5)
     assert not clean["early_intervention"]
     failed = trial_outcome(log, completed=False)
     assert failed["interventions"] == 2 and not failed["clean_lap"]
+
+
+def test_trial_outcome_counts_final_takeover_when_operator_never_switched_back():
+    # Ctrl+C while still in "local" mode: the last takeover was never returned,
+    # so a lap that otherwise looked clean still counts its one intervention.
+    log = {"takeover_times": [1005.5], "pilot_start": 1000.5, "last_mode": "local"}
+    result = trial_outcome(log, completed=True)
+    assert result["interventions"] == 1 and not result["clean_lap"]

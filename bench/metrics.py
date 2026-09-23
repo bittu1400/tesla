@@ -73,7 +73,8 @@ def parse_trial_log(path) -> dict:
     latency = np.array([float(r["latency_ms"]) for r in rows])
     if not pilot.any():
         return {"takeover_times": [], "pilot_start": math.nan, "jerk": math.nan, "osc_hz": math.nan,
-                "latency_ms_mean": math.nan, "latency_ms_p95": math.nan}
+                "latency_ms_mean": math.nan, "latency_ms_p95": math.nan,
+                "last_mode": rows[-1]["mode"] if rows else None}
 
     takeover_times = [float(t[i]) for i in range(1, len(rows)) if pilot[i - 1] and not pilot[i]]
     rates, changes, duration = [], 0, 0.0
@@ -91,14 +92,18 @@ def parse_trial_log(path) -> dict:
         "osc_hz": changes / 2 / duration if duration > 0 else math.nan,
         "latency_ms_mean": float(latency[pilot].mean()),
         "latency_ms_p95": float(np.percentile(latency[pilot], 95)),
+        "last_mode": rows[-1]["mode"],
     }
 
 
 def trial_outcome(log: dict, completed: bool) -> dict:
     """A completed lap ends with the operator's takeover at the finish line;
-    every other takeover was an intervention."""
+    every other takeover was an intervention. That only holds if the log's
+    last row is back in "user" mode; a Ctrl+C without switching back means
+    the last takeover was never returned, so it counts as an intervention."""
     times = log["takeover_times"]
-    interventions = times[:-1] if completed and times else times
+    finish_takeover = completed and bool(times) and log.get("last_mode") == "user"
+    interventions = times[:-1] if finish_takeover else times
     clean = bool(completed and not interventions)
     return {
         "completed": bool(completed),
