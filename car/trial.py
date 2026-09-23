@@ -110,6 +110,10 @@ def main(argv=None, input_fn=input, popen=subprocess.Popen):
             # donkeycar received the same Ctrl+C; wait for it to stop its parts cleanly.
             continue
 
+    log_path = data_dir / log_name
+    if not log_path.exists():
+        raise SystemExit(f"donkeycar exited without writing {log_path}; trial not recorded")
+
     completed = ask("lap completed (y/n): ", parse_yes_no, input_fn)
     notes = input_fn("notes: ").strip()
     append_result(data_dir / "trials.csv", {
