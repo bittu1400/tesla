@@ -79,5 +79,11 @@ The Pi needs only donkeycar (numpy and Pillow come with it); no torch.
    python -c "import numpy; print(numpy.__version__)"
    cd ~/tesla && python -c "import time, numpy as np; from car.policy import Policy; p = Policy('models/sac_clean.npz'); f = np.zeros((120, 160, 3), np.uint8); p.act(f, 0.0); t = time.perf_counter(); [p.act(f, 0.0) for _ in range(50)]; print((time.perf_counter() - t) / 50 * 1000, 'ms')"
    ```
-4. A trial: `cd ~/tesla && python -m car.trial <id>` (ids from `car/schedule.csv`).
-5. Copy results back: `scp -r pi@<car>:~/tesla/data/real data/`.
+4. Save one frame from the car's camera and compare it to a sim frame to confirm the car isn't feeding BGR where the policy expects RGB (the track's yellow centre line will look blue if swapped):
+   ```bash
+   cd ~/tesla && python -c "from picamera2 import Picamera2; from PIL import Image; cam = Picamera2(); cam.configure(cam.create_still_configuration(main={'size': (160, 120), 'format': 'RGB888'})); cam.start(); Image.fromarray(cam.capture_array('main')).save('cam_frame.jpg')"
+   scp pi@<car>:~/tesla/cam_frame.jpg .
+   ```
+   Open `cam_frame.jpg` next to a sim frame (e.g. from `collect.collect`) and check the centre line is yellow in both.
+5. A trial: `cd ~/tesla && python -m car.trial <id>` (ids from `car/schedule.csv`).
+6. Copy results back: `scp -r pi@<car>:~/tesla/data/real data/`.
