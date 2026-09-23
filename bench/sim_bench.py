@@ -29,6 +29,13 @@ from envs.wrappers import ActuatorLag, LatentEnv
 OFFSET_STEER = 0.6
 
 
+def _cte_or_none(info: dict, cte_max: float):
+    """abs(cte), or None for a post-reset spike (gym-donkeycar's own game-over
+    ignores |cte| > 2*cte_max just after reset too)."""
+    cte = abs(info.get("cte", 0.0))
+    return None if cte > 2 * cte_max else cte
+
+
 def run_episode(head, env, condition: Condition, cte_max: float, direction: float = 1.0, laps: int = 1,
                 max_offset_steps: int = 30, clock=time.monotonic) -> dict:
     obs, info = env.reset()
@@ -37,7 +44,8 @@ def run_episode(head, env, condition: Condition, cte_max: float, direction: floa
     steers, times, abs_ctes = [], [], []
     step = 0
     while True:
-        if forcing and (abs(info.get("cte", 0.0)) >= 0.5 * cte_max or step >= max_offset_steps):
+        cte = _cte_or_none(info, cte_max)
+        if forcing and (step >= max_offset_steps or (cte is not None and cte >= 0.5 * cte_max)):
             forcing, handover = False, step
         if forcing:
             steer = OFFSET_STEER * direction
@@ -47,10 +55,11 @@ def run_episode(head, env, condition: Condition, cte_max: float, direction: floa
             times.append(clock())
         obs, _, terminated, truncated, info = env.step(np.array([steer], dtype=np.float32))
         step += 1
-        cte = abs(info.get("cte", 0.0))
-        abs_ctes.append(cte)
-        if handover is not None and recovery is None and cte < 0.2 * cte_max:
-            recovery = step - handover
+        cte = _cte_or_none(info, cte_max)
+        if cte is not None:
+            abs_ctes.append(cte)
+            if handover is not None and recovery is None and cte < 0.2 * cte_max:
+                recovery = step - handover
         if info.get("lap_count", 0) >= laps:
             outcome = "success"
         elif terminated:
@@ -82,8 +91,16 @@ def _key(model: str, condition: str, episode: int) -> tuple:
 def _done(out_path: Path) -> set:
     if not out_path.exists():
         return set()
-    lines = (json.loads(line) for line in out_path.read_text().splitlines() if line.strip())
-    return {_key(r["model"], r["condition"], r["episode"]) for r in lines}
+    done = set()
+    for line in out_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # truncated trailing line from a process killed mid-write
+        done.add(_key(r["model"], r["condition"], r["episode"]))
+    return done
 
 
 def run_bench(env_factory, policies: dict, conditions, n_episodes: int, out_path, base_throttle: float,

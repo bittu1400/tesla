@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from bench.conditions import BY_NAME
-from bench.sim_bench import plan_runs, run_bench, run_episode
+from bench.sim_bench import _done, plan_runs, run_bench, run_episode
 from envs.sim_process import SimDisconnectedError
 
 
@@ -81,6 +81,22 @@ def test_offset_start_forces_then_measures_recovery():
     assert result["outcome"] == "success"
 
 
+def test_offset_start_ignores_post_reset_cte_spike():
+    env = ScriptedEnv([
+        ({"cte": 4.5, "lap_count": 0}, False, False),  # spike right after reset (> 2*cte_max): ignored
+        ({"cte": 1.2, "lap_count": 0}, False, False),  # >= 0.5 * cte_max: hand over
+        ({"cte": 0.3, "lap_count": 0}, False, False),  # < 0.2 * cte_max: recovered
+        ({"cte": 0.1, "lap_count": 1}, False, False),
+    ])
+    head = CountingHead()
+    result = run_episode(head, env, BY_NAME["offset_start"], cte_max=2.0, direction=-1.0, clock=clock())
+    assert env.actions == pytest.approx([-0.6, -0.6, 0.2, 0.2])  # spike alone didn't end the forcing
+    assert head.calls == 2
+    assert result["recovery_steps"] == 1
+    assert result["max_abs_cte"] == pytest.approx(1.2)  # spike excluded from the metric
+    assert result["outcome"] == "success"
+
+
 def test_plan_runs_interleaves_models():
     conditions = [BY_NAME["nominal"], BY_NAME["low_light"]]
     runs = [(m, c.name, e) for m, c, e in plan_runs(["a", "b"], conditions, 2)]
@@ -133,6 +149,15 @@ def test_run_bench_configures_each_episode_and_resumes(tmp_path):
     assert stack.closed
     assert run_bench(lambda: (stack, stack, stack), POLICIES, conditions, **kwargs) == 0
     assert len(out.read_text().splitlines()) == 4
+
+
+def test_done_skips_truncated_trailing_line(tmp_path):
+    path = tmp_path / "episodes.jsonl"
+    path.write_text(
+        json.dumps({"model": "m1", "condition": "nominal", "episode": 0, "outcome": "success"}) + "\n"
+        + '{"model": "m1", "condition": "nominal", "episo'  # killed mid-write
+    )
+    assert _done(path) == {("m1", "nominal", 0)}
 
 
 def test_run_bench_rebuilds_env_after_disconnect(tmp_path):
