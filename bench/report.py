@@ -21,8 +21,8 @@ from scipy import stats  # noqa: E402
 from bench.conditions import CONDITIONS, MODELS, NOISE_CONDITIONS  # noqa: E402
 from bench.metrics import parse_trial_log, trial_outcome, wilson_interval  # noqa: E402
 
-SIM_METRICS = ("avg_abs_cte", "jerk", "osc_hz", "recovery_steps")
-REAL_METRICS = ("interventions", "jerk", "osc_hz", "latency_ms_mean")
+SIM_METRICS = ("avg_abs_cte", "jerk", "osc_hz", "recovery_steps", "lap_time")
+REAL_METRICS = ("interventions", "jerk", "osc_hz", "latency_ms_mean", "latency_ms_p95", "lap_time", "early_intervention")
 COMPARISONS = (
     ("RL vs BC (clean)", "sac_clean", "bc_clean"),
     ("RL vs BC (DR)", "sac_dr", "bc_dr"),
@@ -35,7 +35,14 @@ def load_sim(path) -> list[dict]:
     path = Path(path)
     if not path.exists():
         return []
-    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    rows = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue  # truncated trailing line from a process killed mid-write
     return [{**r, "success": r["outcome"] == "success"} for r in rows]
 
 
@@ -43,22 +50,24 @@ def load_real(path) -> list[dict]:
     path = Path(path)
     if not path.exists():
         return []
-    rows = []
     with path.open(newline="") as f:
-        for trial in csv.DictReader(f):
-            log = parse_trial_log(path.parent / trial["log"])
-            outcome = trial_outcome(log, trial["completed"] == "1")
-            rows.append({
-                "model": trial["model"],
-                "condition": trial["condition"],
-                "success": outcome["clean_lap"],
-                "interventions": outcome["interventions"],
-                "lap_time": outcome["lap_time"],
-                "early_intervention": outcome["early_intervention"],
-                "jerk": log["jerk"],
-                "osc_hz": log["osc_hz"],
-                "latency_ms_mean": log["latency_ms_mean"],
-            })
+        by_trial = {trial["trial_id"]: trial for trial in csv.DictReader(f)}  # a rerun trial keeps only its last row
+    rows = []
+    for trial in by_trial.values():
+        log = parse_trial_log(path.parent / trial["log"])
+        outcome = trial_outcome(log, trial["completed"] == "1")
+        rows.append({
+            "model": trial["model"],
+            "condition": trial["condition"],
+            "success": outcome["clean_lap"],
+            "interventions": outcome["interventions"],
+            "lap_time": outcome["lap_time"],
+            "early_intervention": outcome["early_intervention"],
+            "jerk": log["jerk"],
+            "osc_hz": log["osc_hz"],
+            "latency_ms_mean": log["latency_ms_mean"],
+            "latency_ms_p95": log["latency_ms_p95"],
+        })
     return rows
 
 

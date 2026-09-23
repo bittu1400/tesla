@@ -39,7 +39,7 @@ python -m learn.train_bc --vae models/vae_clean/vae.pth --out models/bc_clean/po
 python -m learn.train_bc --vae models/vae_dr/vae.pth --dr --out models/bc_dr/policy.npz
 python -m learn.train_sac --encoder models/vae_clean/encoder.npz --run-dir models/sac_clean
 python -m learn.train_sac --encoder models/vae_dr/encoder.npz --dr --run-dir models/sac_dr
-python -m bench.sim_bench --conditions nominal                # model-quality gate
+python -m bench.sim_bench --conditions nominal --out results/sim/gate.jsonl  # model-quality gate
 python -m bench.sim_bench                                     # full sim benchmark
 python -m bench.schedule                                      # real-trial schedule -> car/schedule.csv
 python -m bench.report                                        # results/report.md
