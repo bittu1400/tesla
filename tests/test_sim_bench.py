@@ -1,4 +1,5 @@
 import json
+import math
 from types import SimpleNamespace
 
 import numpy as np
@@ -6,6 +7,9 @@ import pytest
 
 from bench.conditions import BY_NAME
 from bench.sim_bench import _done, plan_runs, run_bench, run_episode
+from envs.donkey_env import SETTLE_STEPS
+
+SETTLE = [({"cte": 9.0, "lap_count": 0}, False, False)] * SETTLE_STEPS  # post-reset readings: ignored
 from envs.sim_process import SimDisconnectedError
 
 
@@ -48,10 +52,10 @@ def clock():
 
 
 def test_success_episode_metrics():
-    env = ScriptedEnv([({"cte": 0.2, "lap_count": 0}, False, False),
-                       ({"cte": -0.4, "lap_count": 1, "last_lap_time": 12.5}, False, False)])
+    env = ScriptedEnv(SETTLE + [({"cte": 0.2, "lap_count": 0}, False, False),
+                                ({"cte": -0.4, "lap_count": 1, "last_lap_time": 12.5}, False, False)])
     result = run_episode(CountingHead(), env, BY_NAME["nominal"], cte_max=2.0, clock=clock())
-    assert result["outcome"] == "success" and result["steps"] == 2
+    assert result["outcome"] == "success" and result["steps"] == SETTLE_STEPS + 2
     assert result["avg_abs_cte"] == pytest.approx(0.3)
     assert result["max_abs_cte"] == pytest.approx(0.4)
     assert result["lap_time"] == 12.5 and result["recovery_steps"] is None
@@ -63,10 +67,11 @@ def test_crash_and_timeout():
     assert run_episode(CountingHead(), crash, BY_NAME["nominal"], 2.0, clock=clock())["outcome"] == "crash"
     result = run_episode(CountingHead(), timeout, BY_NAME["nominal"], 2.0, clock=clock())
     assert result["outcome"] == "timeout" and result["lap_time"] is None
+    assert math.isnan(result["avg_abs_cte"])  # ended inside the settle window: no CTE readings
 
 
 def test_offset_start_forces_then_measures_recovery():
-    env = ScriptedEnv([
+    env = ScriptedEnv(SETTLE + [
         ({"cte": 0.5, "lap_count": 0}, False, False),
         ({"cte": 1.2, "lap_count": 0}, False, False),  # >= 0.5 * cte_max: hand over
         ({"cte": 0.8, "lap_count": 0}, False, False),
@@ -75,25 +80,11 @@ def test_offset_start_forces_then_measures_recovery():
     ])
     head = CountingHead()
     result = run_episode(head, env, BY_NAME["offset_start"], cte_max=2.0, direction=-1.0, clock=clock())
-    assert env.actions == pytest.approx([-0.6, -0.6, 0.2, 0.2, 0.2])
+    # settle-window readings (cte 9.0) neither end the forcing nor enter the metrics
+    assert env.actions == pytest.approx([-0.6] * (SETTLE_STEPS + 2) + [0.2, 0.2, 0.2])
     assert head.calls == 3
     assert result["recovery_steps"] == 2
-    assert result["outcome"] == "success"
-
-
-def test_offset_start_ignores_post_reset_cte_spike():
-    env = ScriptedEnv([
-        ({"cte": 4.5, "lap_count": 0}, False, False),  # spike right after reset (> 2*cte_max): ignored
-        ({"cte": 1.2, "lap_count": 0}, False, False),  # >= 0.5 * cte_max: hand over
-        ({"cte": 0.3, "lap_count": 0}, False, False),  # < 0.2 * cte_max: recovered
-        ({"cte": 0.1, "lap_count": 1}, False, False),
-    ])
-    head = CountingHead()
-    result = run_episode(head, env, BY_NAME["offset_start"], cte_max=2.0, direction=-1.0, clock=clock())
-    assert env.actions == pytest.approx([-0.6, -0.6, 0.2, 0.2])  # spike alone didn't end the forcing
-    assert head.calls == 2
-    assert result["recovery_steps"] == 1
-    assert result["max_abs_cte"] == pytest.approx(1.2)  # spike excluded from the metric
+    assert result["max_abs_cte"] == pytest.approx(1.2)
     assert result["outcome"] == "success"
 
 

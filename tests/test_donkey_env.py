@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 import envs.donkey_env as donkey_env
-from envs.donkey_env import DonkeyLaneEnv
+from envs.donkey_env import SETTLE_STEPS, SIM_MAX_CTE, DonkeyLaneEnv
 from envs.reward import CRASH_PENALTY
 from envs.sim_process import SimDisconnectedError
 
@@ -153,3 +153,28 @@ def test_cam_fov_is_sent_only_when_set(make_env, captured):
     assert "cam_config" not in captured["conf"]
     make_env(cam_fov=49)
     assert captured["conf"]["cam_config"] == {"img_w": 160, "img_h": 120, "fov": 49}
+
+
+def test_cte_is_relative_to_lane_centre(make_env, fake):
+    env = make_env(cte_offset=-6.6)
+    assert env.reset()[1]["cte"] == pytest.approx(6.6)  # fake reset reports raw cte 0.0
+    fake.infos = [{"cte": -6.1, "hit": "none", "forward_vel": 1.0}]
+    info = env.step(np.zeros(1))[4]
+    assert info["cte"] == pytest.approx(0.5)
+
+
+def test_off_lane_terminates_after_settle_steps(make_env, fake):
+    env = make_env(cte_max=2.0)
+    env.reset()
+    far = {"cte": 9.0, "hit": "none", "forward_vel": 1.0}
+    fake.infos = [dict(far) for _ in range(SETTLE_STEPS + 1)]
+    assert [env.step(np.zeros(1))[2] for _ in range(SETTLE_STEPS)] == [False] * SETTLE_STEPS  # post-reset spikes
+    _, reward, terminated, _, _ = env.step(np.zeros(1))
+    assert terminated is True and reward == CRASH_PENALTY
+
+
+def test_sim_cte_check_is_disabled(make_env, captured):
+    # the sim skips every game-over check (hits too) while |cte| > 2 * max_cte,
+    # so the env keeps it out of reach and checks the lane itself
+    make_env(cte_max=2.0)
+    assert captured["conf"]["max_cte"] == SIM_MAX_CTE

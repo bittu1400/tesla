@@ -25,8 +25,10 @@ def test_missing_exe_path_exits_with_message(monkeypatch):
 
 
 def test_flags_reach_kwargs(monkeypatch):
-    args = _parse(["--exe-path", "remote", "--throttle", "0.3", "--cte-max", "1.5", "--cam-fov", "49"], monkeypatch)
+    args = _parse(["--exe-path", "remote", "--throttle", "0.3", "--cte-max", "1.5", "--cam-fov", "49",
+                   "--cte-offset", "-6.6"], monkeypatch)
     kwargs = env_kwargs_from_args(args)
     assert kwargs["throttle"] == 0.3
     assert kwargs["cte_max"] == 1.5
     assert kwargs["cam_fov"] == 49
+    assert kwargs["cte_offset"] == -6.6
