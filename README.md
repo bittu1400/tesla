@@ -28,7 +28,10 @@ export DONKEY_SIM_PATH=<path printed by find>
 ## Pipeline
 
 Every sim command also takes `--env-name`, `--throttle`, `--cte-max`,
-`--cam-fov`: use the same values everywhere.
+`--cte-offset`, `--cam-fov`: use the same values everywhere. Calibrated for
+the warehouse track: `--env-name donkey-warehouse-v0 --throttle 0.2
+--cte-max 2.5 --cte-offset -6.9` (raw sim CTE is about -6.9 at the centre of
+the lane the car spawns in, so CTE is re-centred on that lane).
 
 ```bash
 python -m scripts.check_sim                                   # sim check + calibration
