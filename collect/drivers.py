@@ -27,7 +27,7 @@ class ScriptedDriver:
         d_gain: float = 4.0,
         noise_std: float = 0.2,
         swerve_prob: float = 0.02,
-        swerve_steps: int = 15,
+        swerve_steps: int = 3,
     ):
         self.rng = rng
         self.cte_sign = cte_sign
