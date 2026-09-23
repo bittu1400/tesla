@@ -30,6 +30,16 @@ def test_domain_randomizer_is_deterministic_for_a_seed():
     assert np.array_equal(a, b)
 
 
+def test_domain_randomizer_blur_decided_per_frame():
+    dr = DomainRandomizer(np.random.default_rng(0))
+    dr.brightness, dr.contrast, dr.saturation, dr.hue_shift = 1.0, 1.0, 1.0, 0.0
+    dr.shadow_polygons, dr.noise_std = [], 0.0
+    frame = np.zeros(CAMERA_SHAPE, dtype=np.uint8)
+    frame[::2, ::2] = 255  # sharp edges: blurring visibly changes the frame
+    outputs = {dr(frame).tobytes() for _ in range(30)}
+    assert len(outputs) == 2  # both a blurred and a sharp frame occur within one episode
+
+
 def test_domain_randomizer_changes_between_episodes():
     dr = DomainRandomizer(np.random.default_rng(0))
     first = dr(_frame()).astype(int)

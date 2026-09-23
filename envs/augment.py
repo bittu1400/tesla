@@ -37,7 +37,6 @@ class DomainRandomizer:
         ]
         self.shadow_darkness = r.uniform(0.5, 0.8)
         self.noise_std = r.uniform(0.0, 8.0)
-        self.blur = bool(r.random() < 0.3)
 
     def __call__(self, frame, t: int = 0) -> np.ndarray:
         hsv = cv2.cvtColor(np.asarray(frame, dtype=np.uint8), cv2.COLOR_RGB2HSV).astype(np.float32)
@@ -50,7 +49,7 @@ class DomainRandomizer:
             x[_polygon_mask(x.shape, polygon)] *= self.shadow_darkness
         x += self.rng.normal(0.0, self.noise_std, x.shape)
         out = np.clip(x, 0, 255).astype(np.uint8)
-        return cv2.GaussianBlur(out, (3, 3), 0) if self.blur else out
+        return cv2.GaussianBlur(out, (3, 3), 0) if self.rng.random() < 0.3 else out
 
 
 class LowLight:
