@@ -3,10 +3,13 @@ import numpy as np
 
 
 class ScriptedDriver:
-    """Proportional lane-follower on CTE that deliberately drives imperfectly.
+    """PD lane-follower on CTE that deliberately drives imperfectly.
 
     act() returns (executed, label):
-      label    = what a clean expert would steer here: clip(-cte_sign * gain * cte)
+      label    = what a clean expert would steer here:
+                 clip(-cte_sign * (gain * cte + d_gain * (cte - previous cte)))
+                 The derivative term stands in for heading; P alone overshoots
+                 the lane centre. Call reset() at each episode start.
       executed = label + Gaussian noise, or a held hard swerve now and then
     The car follows the noisy executed steering, so the frames show
     off-centre and recovering views; BC learns the clean label for each of
@@ -20,7 +23,8 @@ class ScriptedDriver:
         self,
         rng: np.random.Generator,
         cte_sign: float = 1.0,
-        gain: float = 0.5,
+        gain: float = 0.3,
+        d_gain: float = 4.0,
         noise_std: float = 0.2,
         swerve_prob: float = 0.02,
         swerve_steps: int = 15,
@@ -28,14 +32,21 @@ class ScriptedDriver:
         self.rng = rng
         self.cte_sign = cte_sign
         self.gain = gain
+        self.d_gain = d_gain
         self.noise_std = noise_std
         self.swerve_prob = swerve_prob
         self.swerve_steps = swerve_steps
         self._swerve_left = 0
         self._swerve_steer = 0.0
+        self._prev_cte = None
+
+    def reset(self) -> None:
+        self._prev_cte = None
 
     def act(self, cte: float) -> tuple[float, float]:
-        label = float(np.clip(-self.cte_sign * self.gain * cte, -1.0, 1.0))
+        d_cte = 0.0 if self._prev_cte is None else cte - self._prev_cte
+        self._prev_cte = cte
+        label = float(np.clip(-self.cte_sign * (self.gain * cte + self.d_gain * d_cte), -1.0, 1.0))
         if self._swerve_left == 0 and self.rng.random() < self.swerve_prob:
             self._swerve_left = self.swerve_steps
             self._swerve_steer = float(self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.5, 1.0))

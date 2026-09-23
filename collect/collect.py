@@ -20,6 +20,7 @@ from envs.sim_process import SimDisconnectedError
 
 def run_scripted(env, driver: ScriptedDriver, writer: DatasetWriter, n_frames: int, run_id: str) -> None:
     frame, info = env.reset()
+    driver.reset()
     episode, prev = 0, 0.0
     while writer.total < n_frames:
         executed, label = driver.act(info.get("cte", 0.0))
@@ -28,6 +29,7 @@ def run_scripted(env, driver: ScriptedDriver, writer: DatasetWriter, n_frames: i
         prev = executed
         if terminated or truncated:
             frame, info = env.reset()
+            driver.reset()
             episode, prev = episode + 1, 0.0
 
 

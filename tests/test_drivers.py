@@ -10,9 +10,18 @@ def _driver(**kwargs):
 
 
 def test_label_steers_against_cte():
-    assert _driver().act(1.0)[1] == pytest.approx(-0.5)
-    assert _driver().act(-1.0)[1] == pytest.approx(0.5)
-    assert _driver(cte_sign=-1.0).act(1.0)[1] == pytest.approx(0.5)
+    assert _driver().act(1.0)[1] == pytest.approx(-0.3)
+    assert _driver().act(-1.0)[1] == pytest.approx(0.3)
+    assert _driver(cte_sign=-1.0).act(1.0)[1] == pytest.approx(0.3)
+
+
+def test_derivative_term_damps_approach_and_resets():
+    driver = _driver(gain=0.3, d_gain=4.0)
+    driver.act(-1.0)
+    # moving toward the centre (cte -1.0 -> -0.9): P says +0.27, D says -0.4
+    assert driver.act(-0.9)[1] == pytest.approx(0.27 - 0.4)
+    driver.reset()
+    assert driver.act(-0.9)[1] == pytest.approx(0.27)
 
 
 def test_without_noise_executed_equals_label():
@@ -23,7 +32,7 @@ def test_without_noise_executed_equals_label():
 def test_noise_changes_executed_but_not_label():
     driver = _driver(noise_std=0.3)
     pairs = [driver.act(0.4) for _ in range(20)]
-    assert all(label == pytest.approx(-0.2) for _, label in pairs)
+    assert all(label == pytest.approx(-0.12) for _, label in pairs)
     assert any(abs(executed - label) > 0.01 for executed, label in pairs)
 
 
