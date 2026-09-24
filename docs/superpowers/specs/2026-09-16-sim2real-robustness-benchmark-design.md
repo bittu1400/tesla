@@ -138,9 +138,13 @@ Use of the dataset:
 - Sim track: chosen on day 1 from the gym-donkeycar tracks for resembling a
   tape-on-floor track (candidates: `donkey-warehouse-v0`,
   `donkey-generated-track-v0`). Default in code: `donkey-generated-track-v0`.
+  **As run:** `donkey-warehouse-v0` with `--throttle 0.2 --cte-max 2.5
+  --cte-offset -6.9`. Its raw CTE is about -6.9 at the centre of the spawn
+  lane, so `--cte-offset` re-centres it.
 - Sim camera: 160×120. `--cam-fov` sets the sim camera FOV to match the
   real camera (Unity uses vertical FOV; Pi Camera v2 ≈ 49°, v1 ≈ 41°);
   0 keeps the sim default. The chosen value is used for all models.
+  **As run:** the models were trained with the sim default FOV (see "As run").
 - Real track: tape on floor, copying the sim track's look (edge line colour,
   centre line colour and dashes) and its lane-width-to-car-width ratio,
   measured from sim screenshots. At least one straight (≥ 1.5 m) with a
@@ -168,6 +172,8 @@ Sim noise conditions apply one factor at a time (as do the real ones).
 ### Sim benchmark
 - 4 models × 6 conditions × 10 one-lap episodes = 240 episodes, one sim
   session (models and conditions are swapped in place, no restart).
+  **As run:** 5 sims in parallel (`--workers 5`). Each worker is one sim session
+  running every 5th planned episode. All workers append to the same file.
 - Interleaved order: per condition, per episode index, all four models.
   Every model sees the **same random perturbation** for a given
   (condition, episode index).
@@ -297,6 +303,116 @@ pytest, no simulator and no Pi needed:
 Manual checks: `scripts/check_sim.py` on the real sim; a smoke run
 (tiny dataset → VAE → BC → 2k-step SAC → 1-episode sim bench) before the
 long runs; on the Pi, a dry run of `car.trial` with the car on a stand.
+
+## As run (2026-09-23 – 2026-09-24)
+
+Record of what was actually done, where it departs from the design above, and
+why. Operational details and commands: `README.md`. Personal runbook with
+per-step ticks: `todo.md` (gitignored, on the laptop only).
+
+### Deviations and decisions
+
+| # | Decision | Why | Consequence |
+|---|---|---|---|
+| 1 | Train on the sim's **default camera FOV** (no `--cam-fov`) | The real camera model (todo 1.4) wasn't checked yet, and the user chose to do all camera-independent work first | If the real camera's FOV differs a lot, re-collect all data and retrain every model, then re-run the gate and benchmark |
+| 2 | **No manual (keyboard) data yet**: 9,000 scripted frames (3 × 3,000, seeds 1–3, 13 episodes), not ~12k | Manual driving needs the user at the keyboard | If manual data is added later: retrain only BC, reusing the same VAEs so SAC needn't retrain. Then delete the BC rows from `results/sim/episodes.jsonl` and re-run the benchmark for BC |
+| 3 | SAC DR was **not restarted** after the speed fixes were found | It had the same setup as `sac_clean` (Intel rendering, default BLAS threads), which keeps the clean vs DR comparison fair. A restart would save ~10 min at most | Both SAC models trained with a ~30 ms encoder delay per step (BLAS oversubscription). The gate and benchmark ran without it |
+| 4 | Gate, benchmark and track tests ran with `OMP_NUM_THREADS=1` and **NVIDIA rendering** (PRIME offload); training ran with Intel rendering | Makes 5 parallel sims possible and removes the encoder delay | NVIDIA vs Intel frames: mean difference 2.1/255; the four models' steering differs by at most 0.017 at the same spot |
+| 5 | Benchmark **`--max-episode-steps 2400`** (gate and training: 1200) | SAC laps take 870–1078 steps (chatter, see below); `low_battery` × 0.7 throttle → up to ~1540 steps. A 1200 cap would count them as timeouts, not driving failures | Same cap for all models; crashes still end early |
+| 6 | **`--workers N`** added to `bench.sim_bench` (worker ports skip 9092) | The sim runs in real time, so parallel sims are the only big speedup. Every sim also opens a second server on 0.0.0.0:9092 | The gate took 11m40s for 40 episodes, including 3 restarts before the 9092 fix |
+| 7 | Sim `step_mode` "synchronous" rejected | The sim sent no frames after a reset | — |
+| 8 | Benchmark paused at 194/240 for the track test, then resumed | The user asked to switch tracks | The resume skipped finished episodes; 46 episodes ran in 6m6s |
+
+### Training results
+
+- VAE best val loss: clean 54.00, DR 56.78. Lane edges are visible in `recon.png`, and the DR recon looks clean.
+- BC best val MSE: clean 0.0441, DR 0.0464.
+- SAC: 80k steps each, ~76 min each (17.4–17.7 steps/s). Final `ep_len_mean`:
+  `sac_clean` 737 (at 75k), `sac_dr` 776 (at 78.6k).
+
+### Sim benchmark results (warehouse, 10 episodes per cell)
+
+Gate (nominal, 1200-step cap): all four models 10/10.
+
+Success rate:
+
+| model | nominal | low_light | shadows | distractors | low_battery | offset_start |
+|---|---|---|---|---|---|---|
+| sac_clean | 1.0 | 0.0 | 0.0 | 0.3 | 1.0 | 0.5 |
+| sac_dr | 1.0 | 1.0 | 1.0 | 0.2 | 0.7 | 1.0 |
+| bc_clean | 1.0 | 0.0 | 0.0 | 0.7 | 0.7 | 1.0 |
+| bc_dr | 1.0 | 1.0 | 1.0 | 0.5 | 1.0 | 1.0 |
+
+Pooled over the five noise conditions (n = 50 each):
+- **DR vs clean:** SAC 0.78 vs 0.36 and BC 0.90 vs 0.48, Fisher p < 0.0001 for both.
+- **RL vs BC success:** clean 0.36 vs 0.48 (p = 0.31), DR 0.78 vs 0.90 (p = 0.17). Not significant.
+- **RL vs BC jerk:** median ~17–19 vs ~1.4–1.6, Mann–Whitney p < 0.0001.
+
+Full tables with CIs, CTE, jerk, oscillation and lap time: `results/report.md`
+(gitignored, from `python -m bench.report`).
+
+**SAC steering chatter:** in `nominal`, both SAC models oscillate at ~7.5 Hz
+with jerk ~18–20, against BC's ~2 Hz and ~1.5. The steering scrubs speed, so a SAC lap takes ~45–50 s against
+~26 s for BC at the same throttle. Nothing in the design penalizes steering
+rate, and it was not changed. It matters on the real car (servo wear, RQ2
+smoothness) and on hills (see below).
+
+### Extension: unseen tracks and multi-track training (not in the original design)
+
+Added at the user's request (2026-09-24): test the models on sim tracks they
+have never seen.
+
+Calibration: `--throttle 0.2`, CTE sign +1. Offset and half-width were read
+from frames while steering ±0.25.
+- `donkey-mountain-track-v0`: `--cte-offset -3.6 --cte-max 2.2`
+- `donkey-generated-roads-v0`: `--cte-offset -4.1 --cte-max 1.4`. This one
+  may never register a lap, so it runs with a 1200-step cap, and a timeout
+  means "survived 60 s".
+
+Results are steps until leaving the lane, 5 episodes per model:
+
+| Models | Warehouse | Mountain | Generated-roads |
+|---|---|---|---|
+| bc_clean | laps (benchmark) | 48–49 | 31 |
+| bc_dr | laps | 78–79 | 47–53 |
+| sac_clean | laps | 325, then 4 × ~4,700–4,900* | 57–62 |
+| sac_dr | laps | 66–69 | 58–426 |
+| bc_multi_clean (warehouse + mountain data) | 5/5 laps | 417–427 | 30–35 |
+| bc_multi_dr (warehouse + mountain data) | 5/5 laps | 460–500 | 32–34 |
+
+\* `sac_clean` stalls within ~200 steps: it flips full-lock left/right almost every step
+(39 sign changes in 40 steps). It then sits still until it drifts out of the lane.
+
+Findings:
+- **Zero-shot:** no model completes either unseen track. On mountain-track,
+  three models leave the lane within 48–79 steps. `bc_clean` does it on the first long
+  straight by steering +0.96 across the centre line. Image-space DR does not cover a new road
+  texture or line style.
+- **Multi-track BC:** the models (`data/drive_multi` = 9k warehouse + 9k scripted
+  mountain frames, the mountain frames rendered on NVIDIA) keep warehouse
+  performance and get 6–9× further than their warehouse-only versions on mountain-track. They still fail on the
+  unseen generated-roads, so two training tracks were not enough.
+- **Mountain-track is a poor test for this project:** at throttle 0.2 the car
+  slows to ~0.05 at the same bend even with smooth steering. This was seen directly
+  for `bc_multi_dr` (steps ~380–500), and the `bc_multi_*` crash steps match it. Most likely
+  it's an uphill. At throttle 0.3–0.4, `bc_multi_dr` drove faster than its training data
+  and left the lane sooner (by step 100 at 0.4). The project fixes throttle, and the
+  real car drives on a flat floor. Also, `info["pos"]` stayed near (7, 1, 0) there even while moving.
+
+### Open decisions for the next session
+
+1. **Flat-track extension** (recommended, **not yet approved**): replace
+   mountain-track with flat indoor tracks (`minimonaco`, `circuit-launch`,
+   `roboracingleague`, `waveshare`, spawn frames seen). Train on warehouse +
+   two of them and hold out the other two. If BC generalizes, decide how to
+   train SAC across tracks: the env is one sim and one track, so it needs
+   either a vectorized env with one sim per track (SB3 SAC then needs
+   `train_freq` in steps instead of per episode) or a scene switch between
+   episodes.
+2. **SAC chatter:** keep it (it is a result) or add a steering-rate term to the
+   reward. Any change means retraining both SAC models, then re-running the gate and benchmark.
+3. **Manual data and camera FOV** (deviations 1–2): before or after the real trials?
+4. Real-car work (todo 1.4, 1.5, Day 4+) is untouched.
 
 ## Out of scope
 

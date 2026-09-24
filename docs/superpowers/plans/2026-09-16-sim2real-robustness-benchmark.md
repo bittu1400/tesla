@@ -10,23 +10,30 @@
 
 **Spec:** [docs/superpowers/specs/2026-09-16-sim2real-robustness-benchmark-design.md](../specs/2026-09-16-sim2real-robustness-benchmark-design.md)
 
-## Status (2026-09-22)
+## Status (2026-09-24)
 
-Branch `sim2real-benchmark`, forked from `master`. Tasks 1–15 are implemented and committed: 15 commits, `ae25e4a` (Task 1) through `fabd652` (Task 15). All 115 tests pass. Each task got a spec and quality review:
-- 14 tasks came back clean.
-- The Task 14 review flagged one plan-mandated Important finding. It was resolved by a ruling (below), not by a code change.
+**All 17 tasks are done.** Branch `sim2real-benchmark` was fast-forwarded into `master` and deleted. Post-plan commits sit on `master`, which is ahead of `origin/master` (not pushed as of 2026-09-24):
+- `1b6f656`..`a5ebc1d`: fixes from the final review.
+- `28dec99`..`e4d1027`: fixes found while calibrating on the real sim.
+- `cbeb974`, `8e57d6d`: the speed work below.
 
-Ticked steps are done. Unticked steps are not.
+The suite has 134 tests. The SDD ledger (`.superpowers/sdd/...`) was deleted; git history is the record now.
 
-**Next session:**
-1. Task 16 (`bench/report.py`) has not started. After it, the full suite should total **121**. The original "122" miscounted Task 14, which has 6 tests.
-   - `README.md` already lists `python -m bench.report`, but that command fails until Task 16 lands.
-2. Run a final whole-branch review over `fbbd919..HEAD`, then merge `sim2real-benchmark` into `master`.
-3. The manual steps need the Unity sim and a person: Task 6 Steps 2–4, Task 9 Step 7, and all of Task 17. The sim is not installed yet: `DONKEY_SIM_PATH` is unset, and the README download URL answers HTTP 200.
+The manual steps ran on the real sim on 2026-09-23:
+- Task 6 Steps 2–4: calibration.
+- Task 9 Step 7: both collection modes start and record. The user has not yet driven with the arrow keys.
+- Task 17: smoke run.
 
-The execution ledger lives at `.superpowers/sdd/2026-09-16-sim2real-robustness-benchmark/progress.md`. It is gitignored and exists on this machine only. It holds every ruling and every deferred minor finding; hand all of them to the final review. Rulings to know:
-- **Sim `offset_start`:** at handover the policy's `prev_steer` input is `±0.6`, the command actually executed during the forced drift. The Task 14 reviewer asked for it to be zeroed, to match the real car, which starts at 0. It was kept, because everywhere else `prev_steer` means "previous executed command", so a zero would feed a false state. To revisit, change one line in `bench/sim_bench.py::run_episode`.
-- **Simulator steps:** anything that needs the real simulator was skipped, and the code for those tasks was committed. Unit tests were written where the plan calls for them; `scripts/check_sim.py` has none.
+**The code has diverged from the listings below.** The repository is the source of truth. Changes after the plan:
+- `envs/donkey_env.py`: the `cte_offset` flag, env-side off-lane termination, and `SETTLE_STEPS`.
+- `collect/drivers.py`: PD control and 3-step swerves.
+- `bench/sim_bench.py`: `--workers N` (ports skip 9092; every sim also opens 0.0.0.0:9092), and `run_bench(..., shard=(i, n))`.
+- `envs/sim_process.py`: the log file is `unitylog_<port>.txt`.
+
+What was run after the plan (data, training, gate, benchmark, the unseen-track extension), every deviation with its reason, the results, and the open decisions: design spec, section **"As run"**. Commands: `README.md`. Per-step runbook: `todo.md`, which is gitignored and on the laptop only.
+
+Rulings still standing:
+- **Sim `offset_start`:** at handover the policy's `prev_steer` input is `±0.6`, the command executed during the forced drift. It was kept, because everywhere else `prev_steer` means "previous executed command". To revisit, change one line in `bench/sim_bench.py::run_episode`.
 - **`.gitignore`:** also ignores `Donkey Car Simulation Research Topics.pdf`.
 
 ## Global Constraints
@@ -48,8 +55,8 @@ The execution ledger lives at `.superpowers/sdd/2026-09-16-sim2real-robustness-b
 - `car/` imports only the standard library, numpy and (lazily) PIL. Never import torch, cv2 or anything from `envs/`, `learn/`, `bench/` in `car/`.
 - Condition names, identical in sim and real: `nominal`, `low_light`, `shadows`, `distractors`, `low_battery`, `offset_start`.
 - Run every command from the repo root with `.venv` active, as `python -m package.module`.
-- `data/`, `models/`, `results/`, `demo/`, `unitylog.txt` and `todo.md` are gitignored. Never commit them.
-- Commits: plain messages, no co-author or tool attribution lines, and never stage anything under `docs/`.
+- `data/`, `models/`, `results/`, `demo/`, `unitylog*.txt` and `todo.md` are gitignored. Never commit them.
+- Commits: plain messages, no co-author or tool attribution lines. Code commits never include `docs/`; doc changes go in their own `docs:` commit, and only when the user asks.
 - Unit tests never start the real simulator or need the Pi. Steps marked **manual** need a person.
 
 ---
@@ -1497,19 +1504,19 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Manual — connection check**
+- [x] **Step 2: Manual — connection check**
 
 Run: `python -m scripts.check_sim --steps 100`
 Expected: a sim window opens and the car drives forward; `Info keys:` includes `cte`, `forward_vel`, `hit`, `lap_count`, `last_lap_time`, `pos`; `hit` prints `'none'` while driving cleanly; the script ends with `Closed cleanly.`; afterwards `pgrep -fa DonkeySim` prints nothing.
 If a key is missing or renamed, stop: `envs/reward.py`, `envs/donkey_env.py` and `bench/sim_bench.py` rely on these names.
 
-- [ ] **Step 3: Manual — track choice**
+- [x] **Step 3: Manual — track choice**
 
 For each of `donkey-generated-track-v0` and `donkey-warehouse-v0`:
 `python -m scripts.check_sim --env-name <track> --steps 60 --save-frame data/track_<track>.png`
 (create `data/` first: `mkdir -p data`). Open both PNGs. Pick the track that looks most like a tape line track on a floor and whose `lap_count` increases when the car completes a lap. Record it in `todo.md`; pass it as `--env-name` to every later command.
 
-- [ ] **Step 4: Manual — CTE sign, lane half-width, throttle**
+- [x] **Step 4: Manual — CTE sign, lane half-width, throttle**
 
 - CTE sign: `python -m scripts.check_sim --env-name <track> --steer 0.5 --steps 80 --cte-max 8`. `cte` grows more positive under right steer → sign `+1`, more negative → `-1`.
 - Lane half-width: in that run note `|cte|` when the wheels visibly cross the lane edge; repeat with `--steer -0.5`; take the smaller value → `--cte-max`.
@@ -2415,7 +2422,7 @@ if __name__ == "__main__":
 Run: `pytest tests/test_drivers.py tests/test_dataset.py tests/test_collect.py -v`
 Expected: PASS (12 passed)
 
-- [ ] **Step 7: Manual — both modes work on the real sim**
+- [x] **Step 7: Manual — both modes work on the real sim**
 
 Use the calibrated flags from Task 6 (written below as `<flags>` = `--env-name ... --throttle ... --cte-max ...`).
 - `python -m collect.collect --mode scripted --out-dir data/drive_check --n-frames 400 --cte-sign <sign> <flags>` — the car follows the lane with visible wobble and occasional swerves; ends with `done: 400 frames written`. If the car steers straight off the road every episode, flip `--cte-sign`.
@@ -4412,7 +4419,7 @@ git commit -m "feat: add donkeycar pilot part, trial runner and trial schedule"
   - `write_report(sim_rows, real_rows, out_dir) -> Path` — `report.md`; `real_success.png` when real rows exist; `sim_vs_real.png` when both exist
   - CLI: `python -m bench.report [--sim results/sim/episodes.jsonl] [--real data/real/trials.csv] [--out-dir results]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_report.py
@@ -4494,12 +4501,12 @@ def test_write_report_with_sim_only_and_with_both(tmp_path):
     assert (tmp_path / "both" / "sim_vs_real.png").exists()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_report.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'bench.report'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```python
 # bench/report.py
@@ -4716,17 +4723,17 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_report.py -v`
 Expected: PASS (6 passed)
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `pytest`
 Expected: all tests pass (121).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add bench/report.py tests/test_report.py
@@ -4743,7 +4750,7 @@ git commit -m "feat: add benchmark report with statistical tests and figures"
 - Consumes: every CLI from Tasks 6–16 against the real simulator, with the calibrated flags from Task 6 (`<flags>`).
 - Produces: confidence the whole pipeline runs before any multi-hour job. Result quality does not matter here.
 
-- [ ] **Step 1: Collect a small dataset (2 short scripted runs)**
+- [x] **Step 1: Collect a small dataset (2 short scripted runs)**
 
 ```bash
 python -m collect.collect --mode scripted --out-dir data/smoke --n-frames 400 --cte-sign <sign> --seed 1 <flags>
@@ -4752,7 +4759,7 @@ python -m collect.collect --mode scripted --out-dir data/smoke --n-frames 400 --
 
 Expected: `done: 400 frames written` twice; `wc -l data/smoke/labels.csv` prints 801.
 
-- [ ] **Step 2: Train tiny VAEs**
+- [x] **Step 2: Train tiny VAEs**
 
 ```bash
 python -m learn.train_vae --data-dir data/smoke --out-dir models/smoke_vae --epochs 2
@@ -4761,30 +4768,30 @@ python -m learn.train_vae --data-dir data/smoke --out-dir models/smoke_vae_dr --
 
 Expected: finite losses; `models/smoke_vae/{vae.pth,encoder.npz,recon.png}` exist; the DR `recon.png` top row shows randomized frames, middle row clean.
 
-- [ ] **Step 3: Train a tiny BC model**
+- [x] **Step 3: Train a tiny BC model**
 
 Run: `python -m learn.train_bc --data-dir data/smoke --vae models/smoke_vae_dr/vae.pth --dr --out models/smoke_bc/policy.npz --epochs 2`
 Expected: 2 epoch lines; `models/smoke_bc/policy.npz` exists.
 
-- [ ] **Step 4: Train SAC briefly, interrupt once, kill the sim once**
+- [x] **Step 4: Train SAC briefly, interrupt once, kill the sim once**
 
 Run: `python -m learn.train_sac --encoder models/smoke_vae/encoder.npz --run-dir models/smoke_sac --total-timesteps 3000 --checkpoint-freq 1000 <flags>`
 - When `models/smoke_sac/checkpoints/sac_1000_steps.zip` appears, press Ctrl+C; `pgrep -fa DonkeySim` prints nothing; rerun the same command → it prints `resuming from ...`.
 - While it trains again, kill only the simulator: `pkill -9 -f DonkeySim` → within ~10 s the log prints `simulator disconnected (...); restart 1/5` and training continues.
 Expected: ends with `saved models/smoke_sac/sac_final.zip and models/smoke_sac/policy.npz`.
 
-- [ ] **Step 5: Sim benchmark, interrupted and resumed**
+- [x] **Step 5: Sim benchmark, interrupted and resumed**
 
 Run: `python -m bench.sim_bench --models sac_clean=models/smoke_sac/policy.npz bc_dr=models/smoke_bc/policy.npz --conditions nominal low_battery offset_start --n-episodes 1 --max-episode-steps 300 --out results/smoke/episodes.jsonl <flags without --max-episode-steps>`
 Press Ctrl+C after the first `[1/6]` line, then rerun the same command.
 Expected: the rerun starts at `[1/5]`; `results/smoke/episodes.jsonl` ends with 6 lines. Watching the sim window: in `offset_start` the car first swerves to one side before the model steers; in `low_battery` it drives visibly slower.
 
-- [ ] **Step 6: Report**
+- [x] **Step 6: Report**
 
 Run: `python -m bench.report --sim results/smoke/episodes.jsonl --real data/none.csv --out-dir results/smoke`
 Expected: prints a Simulator table with `sac_clean` and `bc_dr` rows for the three conditions, a comparison table (mostly `—`), and "Real car: No data yet.", without errors.
 
-- [ ] **Step 7: Clean up**
+- [x] **Step 7: Clean up**
 
 ```bash
 rm -r data/smoke models/smoke_vae models/smoke_vae_dr models/smoke_bc models/smoke_sac results/smoke
