@@ -8,10 +8,14 @@ Each finished episode is appended to --out immediately; re-running skips
 finished episodes, so a crash or Ctrl+C loses at most one episode.
 
 Model-quality gate first:  python -m bench.sim_bench --conditions nominal
+
+--workers N runs N simulators at once (one port each, never 9092); each takes every N-th
+planned episode, so results match a single-worker run.
 """
 import argparse
 import json
 import math
+import multiprocessing as mp
 import time
 import zlib
 from pathlib import Path
@@ -28,6 +32,10 @@ from envs.sim_process import SimDisconnectedError
 from envs.wrappers import ActuatorLag, LatentEnv
 
 OFFSET_STEER = 0.6
+# Every sim also opens a second server on 0.0.0.0:9092 (the first sim to start
+# gets it), so a sim launched on port 9092 collides with it.
+SIM_RESERVED_PORT = 9092
+WORKER_STAGGER_S = 5  # eases the load of several sims starting at once
 
 
 def _abs_cte(info: dict, step: int):
@@ -104,11 +112,16 @@ def _done(out_path: Path) -> set:
 
 
 def run_bench(env_factory, policies: dict, conditions, n_episodes: int, out_path, base_throttle: float,
-              cte_max: float, laps: int = 1, max_restarts: int = 5, clock=time.monotonic) -> int:
+              cte_max: float, laps: int = 1, max_restarts: int = 5, clock=time.monotonic,
+              shard: tuple = (0, 1)) -> int:
+    """shard=(i, n): run only every n-th planned episode starting at i, so n
+    workers with their own sims can share one out_path."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done = _done(out_path)
-    todo = [r for r in plan_runs(list(policies), conditions, n_episodes) if _key(r[0], r[1].name, r[2]) not in done]
+    index, count = shard
+    plan = plan_runs(list(policies), conditions, n_episodes)[index::count]
+    todo = [r for r in plan if _key(r[0], r[1].name, r[2]) not in done]
     stack, restarts, finished = None, 0, 0
     try:
         while finished < len(todo):
@@ -136,11 +149,36 @@ def run_bench(env_factory, policies: dict, conditions, n_episodes: int, out_path
             with out_path.open("a") as f:
                 f.write(json.dumps({"model": model, "condition": condition.name, "episode": episode, **result}) + "\n")
             finished += 1
-            print(f"[{finished}/{len(todo)}] {model:9s} {condition.name:12s} ep {episode}: {result['outcome']}")
+            print(f"[{finished}/{len(todo)}] {model:9s} {condition.name:12s} ep {episode}: {result['outcome']}", flush=True)
     finally:
         if stack is not None:
             stack[2].close()
     return finished
+
+
+def worker_port(base: int, index: int) -> int:
+    return [p for p in range(base, base + index + 2) if p != SIM_RESERVED_PORT][index]
+
+
+def _worker(args, shard=(0, 1)) -> int:
+    env_kwargs = env_kwargs_from_args(args)
+    env_kwargs["port"] = worker_port(args.port, shard[0])
+    policies = {name: Policy(path) for name, path in (spec.split("=", 1) for spec in args.models)}
+    first_encoder = next(iter(policies.values())).encoder
+
+    def factory():
+        raw = DonkeyLaneEnv(**env_kwargs)
+        lag = ActuatorLag(raw)
+        return raw, lag, LatentEnv(lag, first_encoder)
+
+    return run_bench(factory, policies, [BY_NAME[c] for c in args.conditions], args.n_episodes, args.out,
+                     base_throttle=env_kwargs["throttle"], cte_max=env_kwargs["cte_max"], laps=args.laps,
+                     max_restarts=args.max_restarts, shard=shard)
+
+
+def _start_worker(args, index: int) -> None:
+    time.sleep(index * WORKER_STAGGER_S)
+    _worker(args, (index, args.workers))
 
 
 def main():
@@ -153,21 +191,23 @@ def main():
     parser.add_argument("--laps", type=int, default=1)
     parser.add_argument("--out", default="results/sim/episodes.jsonl")
     parser.add_argument("--max-restarts", type=int, default=5)
+    parser.add_argument("--workers", type=int, default=1,
+                        help="parallel simulators on ports --port, --port+1, ... (skipping 9092); all append to --out")
     args = parser.parse_args()
 
-    env_kwargs = env_kwargs_from_args(args)
-    policies = {name: Policy(path) for name, path in (spec.split("=", 1) for spec in args.models)}
-    first_encoder = next(iter(policies.values())).encoder
-
-    def factory():
-        raw = DonkeyLaneEnv(**env_kwargs)
-        lag = ActuatorLag(raw)
-        return raw, lag, LatentEnv(lag, first_encoder)
-
-    n = run_bench(factory, policies, [BY_NAME[c] for c in args.conditions], args.n_episodes, args.out,
-                  base_throttle=env_kwargs["throttle"], cte_max=env_kwargs["cte_max"], laps=args.laps,
-                  max_restarts=args.max_restarts)
-    print(f"ran {n} episodes -> {args.out}  (summary: python -m bench.report)")
+    if args.workers == 1:
+        n = _worker(args)
+        print(f"ran {n} episodes -> {args.out}  (summary: python -m bench.report)")
+        return
+    procs = [mp.Process(target=_start_worker, args=(args, i)) for i in range(args.workers)]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+    failed = [i for i, p in enumerate(procs) if p.exitcode != 0]
+    if failed:
+        raise SystemExit(f"workers {failed} failed; re-run the same command to finish their episodes")
+    print(f"all {args.workers} workers done -> {args.out}  (summary: python -m bench.report)")
 
 
 if __name__ == "__main__":

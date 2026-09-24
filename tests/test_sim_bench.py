@@ -163,3 +163,21 @@ def test_run_bench_rebuilds_env_after_disconnect(tmp_path):
     n = run_bench(factory, POLICIES, [BY_NAME["nominal"]], 1, out, 0.25, 2.0, clock=clock())
     assert n == 2 and len(made) == 2
     assert stacks[0].closed
+
+
+def test_shards_share_one_file_and_cover_every_episode_once(tmp_path):
+    out = tmp_path / "episodes.jsonl"
+    conditions = [BY_NAME["nominal"], BY_NAME["shadows"]]
+    kwargs = dict(n_episodes=3, out_path=out, base_throttle=0.25, cte_max=2.0, clock=clock())
+    ran = [run_bench(lambda: (s, s, s), POLICIES, conditions, shard=(i, 5), **kwargs)
+           for i, s in enumerate(FakeStack() for _ in range(5))]
+    assert sum(ran) == 12
+    keys = [(r["model"], r["condition"], r["episode"]) for r in map(json.loads, out.read_text().splitlines())]
+    assert sorted(keys) == sorted((m, c.name, e) for m, c, e in plan_runs(list(POLICIES), conditions, 3))
+    assert run_bench(lambda: (FakeStack(),) * 3, POLICIES, conditions, shard=(2, 5), **kwargs) == 0
+
+
+def test_worker_ports_skip_the_sims_fixed_second_port():
+    from bench.sim_bench import worker_port
+    assert [worker_port(9091, i) for i in range(4)] == [9091, 9093, 9094, 9095]
+    assert [worker_port(9100, i) for i in range(2)] == [9100, 9101]
