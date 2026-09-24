@@ -44,7 +44,7 @@ def launch_sim(exe_path: str, port: int, timeout: float) -> subprocess.Popen:
     failed start never leaves an orphaned sim holding the port.
     """
     proc = subprocess.Popen(
-        [exe_path, "--port", str(port), "--host", "127.0.0.1", "-logFile", "unitylog.txt"],
+        [exe_path, "--port", str(port), "--host", "127.0.0.1", "-logFile", f"unitylog_{port}.txt"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

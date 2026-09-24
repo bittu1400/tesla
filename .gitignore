@@ -15,4 +15,4 @@ data/
 models/
 results/
 demo/
-unitylog.txt
+unitylog*.txt
