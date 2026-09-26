@@ -10,12 +10,13 @@
 
 **Spec:** [docs/superpowers/specs/2026-09-16-sim2real-robustness-benchmark-design.md](../specs/2026-09-16-sim2real-robustness-benchmark-design.md)
 
-## Status (2026-09-24)
+## Status (2026-09-26)
 
-**All 17 tasks are done.** Branch `sim2real-benchmark` was fast-forwarded into `master` and deleted. Post-plan commits sit on `master`, which is ahead of `origin/master` (not pushed as of 2026-09-24):
+**All 17 tasks are done.** Branch `sim2real-benchmark` was fast-forwarded into `master` and deleted. Post-plan commits on `master`:
 - `1b6f656`..`a5ebc1d`: fixes from the final review.
 - `28dec99`..`e4d1027`: fixes found while calibrating on the real sim.
-- `cbeb974`, `8e57d6d`: the speed work below.
+- `cbeb974`, `8e57d6d`: the speed work below. `c0a6cb1`: docs. Pushed to `origin/master` on 2026-09-26.
+- `e8c9703` (2026-09-26): PD gain flags for collection and multi-dir training data. It and the docs commit after it are **not pushed**.
 
 The suite has 134 tests. The SDD ledger (`.superpowers/sdd/...`) was deleted; git history is the record now.
 
@@ -29,8 +30,10 @@ The manual steps ran on the real sim on 2026-09-23:
 - `collect/drivers.py`: PD control and 3-step swerves.
 - `bench/sim_bench.py`: `--workers N` (ports skip 9092; every sim also opens 0.0.0.0:9092), and `run_bench(..., shard=(i, n))`.
 - `envs/sim_process.py`: the log file is `unitylog_<port>.txt`.
+- `collect/collect.py`: `--gain` and `--d-gain` for the scripted driver (defaults 0.3 and 4.0, as before).
+- `learn/train_vae.py`, `learn/train_bc.py`: `--data-dir` takes one or more dirs and concatenates them.
 
-What was run after the plan (data, training, gate, benchmark, the unseen-track extension), every deviation with its reason, the results, and the open decisions: design spec, section **"As run"**. Commands: `README.md`. Per-step runbook: `todo.md`, which is gitignored and on the laptop only.
+What was run after the plan (data, training, gate, benchmark, both track extensions, the camera FOV study), every deviation with its reason, the results, and the open decisions: design spec, section **"As run"**. Commands: `README.md`. Per-step runbook: `todo.md`, which is gitignored and on the laptop only.
 
 Rulings still standing:
 - **Sim `offset_start`:** at handover the policy's `prev_steer` input is `±0.6`, the command executed during the forced drift. It was kept, because everywhere else `prev_steer` means "previous executed command". To revisit, change one line in `bench/sim_bench.py::run_episode`.
