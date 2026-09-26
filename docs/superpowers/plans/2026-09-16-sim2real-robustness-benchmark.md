@@ -16,7 +16,7 @@
 - `1b6f656`..`a5ebc1d`: fixes from the final review.
 - `28dec99`..`e4d1027`: fixes found while calibrating on the real sim.
 - `cbeb974`, `8e57d6d`: the speed work below. `c0a6cb1`: docs. Pushed to `origin/master` on 2026-09-26.
-- `e8c9703` (2026-09-26): PD gain flags for collection and multi-dir training data. It and the docs commit after it are **not pushed**.
+- `e8c9703` (2026-09-26): PD gain flags for collection and multi-dir training data. `21cae6b`: docs. Both pushed on 2026-09-26.
 
 The suite has 134 tests. The SDD ledger (`.superpowers/sdd/...`) was deleted; git history is the record now.
 
