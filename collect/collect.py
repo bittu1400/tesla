@@ -68,6 +68,8 @@ def main():
     parser.add_argument("--n-frames", type=int, default=3000, help="frames to record in this run")
     parser.add_argument("--save-every", type=int, default=200)
     parser.add_argument("--cte-sign", type=float, default=1.0, help="scripted mode: +1 or -1, see check_sim")
+    parser.add_argument("--gain", type=float, default=0.3, help="scripted mode: P gain on cte (raise it for narrow lanes)")
+    parser.add_argument("--d-gain", type=float, default=4.0, help="scripted mode: D gain on the cte change per step")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -76,7 +78,9 @@ def main():
     env = DonkeyLaneEnv(**env_kwargs_from_args(args))
     try:
         if args.mode == "scripted":
-            driver = ScriptedDriver(np.random.default_rng(args.seed), cte_sign=args.cte_sign)
+            driver = ScriptedDriver(
+                np.random.default_rng(args.seed), cte_sign=args.cte_sign, gain=args.gain, d_gain=args.d_gain
+            )
             run_scripted(env, driver, writer, args.n_frames, run_id)
         else:
             run_manual(env, writer, args.n_frames, run_id)

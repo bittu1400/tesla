@@ -102,7 +102,7 @@ def train(encoder, head, train_loader, val_loader, epochs: int, device: str = "c
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data-dir", default="data/drive")
+    parser.add_argument("--data-dir", nargs="+", default=["data/drive"], help="one or more dataset dirs")
     parser.add_argument("--vae", required=True, help="vae.pth whose encoder this policy uses")
     parser.add_argument("--out", required=True, help="e.g. models/bc_clean/policy.npz")
     parser.add_argument("--dr", action="store_true", help="domain-randomize every training sample")
@@ -115,7 +115,7 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
-    rows = read_labels(args.data_dir)
+    rows = [row for d in args.data_dir for row in read_labels(d)]
     train_rows, val_rows = split_by_episode(rows, args.val_fraction, args.seed)
     torch.manual_seed(args.seed)
     loader_kwargs = dict(batch_size=args.batch_size, num_workers=args.workers, worker_init_fn=seed_worker)

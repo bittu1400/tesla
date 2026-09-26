@@ -109,7 +109,7 @@ def save_reconstructions(model, dataset, out_path, n: int = 8) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data-dir", default="data/drive")
+    parser.add_argument("--data-dir", nargs="+", default=["data/drive"], help="one or more dataset dirs")
     parser.add_argument("--out-dir", default="models/vae_clean")
     parser.add_argument("--dr", action="store_true", help="denoising VAE on domain-randomized inputs")
     parser.add_argument("--epochs", type=int, default=30)
@@ -120,7 +120,7 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
-    paths = [row["frame"] for row in read_labels(args.data_dir)]
+    paths = [row["frame"] for d in args.data_dir for row in read_labels(d)]
     if len(paths) < MIN_FRAMES:
         raise SystemExit(f"only {len(paths)} frames in {args.data_dir}; collect at least {MIN_FRAMES}")
 
